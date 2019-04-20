@@ -101,10 +101,14 @@ class SsoLoginTestCase(TestCase):
             self.assertEqual(response.status_code, 302)
             self.assertEqual(response.url, 'https://example.org')
             mock.assert_called_with(request, user)
+            self.assertTrue(SsoRecord.objects.get(external_id=124).sso_logged_in)
+            user.refresh_from_db()
+            self.assertEqual(user.first_name, 'M')
+            self.assertEqual(user.last_name, 'B')
 
         user = User.objects.create_user(username='x', email='a@b.com')
         SsoRecord.objects.create(user=user, external_id='123', sso_logged_in=True)
-        payload = base64.b64encode(b'sso_nonce=31ab53&external_id=124&email=a@b.com').decode(encoding='utf-8')
+        payload = base64.b64encode(b'sso_nonce=31ab53&external_id=124&email=a@b.com&first_name=M&last_name=B').decode(encoding='utf-8')
         qs = {'sso': payload, 'sig': self.sign(payload)}
         self.call_middleware(qs, {'sso_nonce': '31ab53'}, asserts)
 

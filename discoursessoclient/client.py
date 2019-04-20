@@ -6,6 +6,7 @@ import urllib.parse
 
 from django.conf import settings
 from django.contrib import auth
+from django.contrib.auth.models import User
 from django.http import HttpResponseBadRequest, HttpResponseRedirect
 
 from discoursessoclient.models import SsoRecord
@@ -67,7 +68,7 @@ class DiscourseSsoClientMiddleware:
         if 'email' not in params:
             return HttpResponseBadRequest('missing_email')
 
-        user = self.get_user(params)
+        user = self.get_and_update_user(params)
         request.user = user
         auth.login(request, user)
 
@@ -84,15 +85,27 @@ class DiscourseSsoClientMiddleware:
                         digestmod=hashlib.sha256).hexdigest()
 
 
-    def get_user(self, params):
+    def get_and_update_user(self, params):
         # If existing sso record for external_id, update and return associated user
         # Else, if user with matching email, update them, create sso record, and return
         # Else, create user and sso record
 
-        try:
-            return SsoRecord.objects.get(external_id=params['external_id'][0]).user
-        except SsoRecord.DoesNotExist:
-            return None
+        ext_id = params['external_id'][0]
+        email = params['email'][0]
+        first_name = params.get('first_name', [None])[0]
+        last_name = params.get('last_name', [None])[0]
 
-    def update_user_from_sso_payload(self, user, payload):
-        1
+        try:
+            return SsoRecord.objects.get(external_id=ext_id).user
+        except SsoRecord.DoesNotExist:
+            try:
+                user = User.objects.get(email=email)
+                user.first_name = first_name
+                user.last_name = last_name
+                user.save()
+                SsoRecord.objects.create(user=user,
+                                         external_id=ext_id,
+                                         sso_logged_in=True)
+                return user
+            except SsoRecord.DoesNotExist:
+                return None
