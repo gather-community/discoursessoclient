@@ -91,13 +91,14 @@ class SsoLoginTestCase(TestCase):
             self.assertEqual(response.status_code, 302)
             self.assertEqual(response.url, 'https://example.org')
             mock.assert_called_with(request, user)
+            self.assertTrue(SsoRecord.objects.get(external_id=123).sso_logged_in)
             user.refresh_from_db()
             self.assertEqual(user.email, 'a@c.com')
             self.assertEqual(user.first_name, 'M')
             self.assertEqual(user.last_name, 'B')
 
         user = User.objects.create_user(username='x', email='a@b.com')
-        SsoRecord.objects.create(user=user, external_id='123', sso_logged_in=True)
+        SsoRecord.objects.create(user=user, external_id='123', sso_logged_in=False)
         payload = 'sso_nonce=31ab53&external_id=123&email=a@c.com&first_name=M&last_name=B'
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': self.sign(payload)}
@@ -115,7 +116,7 @@ class SsoLoginTestCase(TestCase):
             self.assertEqual(user.last_name, 'B')
 
         user = User.objects.create_user(username='x', email='a@b.com')
-        SsoRecord.objects.create(user=user, external_id='123', sso_logged_in=True)
+        SsoRecord.objects.create(user=user, external_id='123', sso_logged_in=False)
         payload = 'sso_nonce=31ab53&external_id=124&email=a@b.com&first_name=M&last_name=B'
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': self.sign(payload)}

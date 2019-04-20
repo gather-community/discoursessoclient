@@ -12,7 +12,6 @@ from django.http import HttpResponseBadRequest, HttpResponseRedirect
 from discoursessoclient.models import SsoRecord
 
 
-
 class DiscourseSsoClientMiddleware:
     def __init__(self, get_response):
         self.get_response = get_response
@@ -53,7 +52,8 @@ class DiscourseSsoClientMiddleware:
 
         nonce = request.session['sso_nonce']
         try:
-            qstring = base64.decodestring(payload.encode(encoding='utf-8')).decode(encoding='utf-8')
+            qstring = base64.decodestring(payload.encode(encoding='utf-8')) \
+                            .decode(encoding='utf-8')
             if nonce not in qstring:
                 return HttpResponseBadRequest('wrong_nonce_in_payload')
         except ValueError:
@@ -84,32 +84,31 @@ class DiscourseSsoClientMiddleware:
                         bytes(payload, encoding='utf-8'),
                         digestmod=hashlib.sha256).hexdigest()
 
-
     def get_and_update_user(self, params):
         ext_id = params['external_id'][0]
         email = params['email'][0]
 
         try:
-            # If existing sso record for external_id,
-            # update and return associated user
-            user = SsoRecord.objects.get(external_id=ext_id).user
-            self.update_user_from_params(user, params)
+            sso = SsoRecord.objects.get(external_id=ext_id)
         except SsoRecord.DoesNotExist:
             try:
                 # Else, if user with matching email,
                 # update them, create sso record, and return
-                user = User.objects.get(email=email)
-                self.update_user_from_params(user, params)
-                SsoRecord.objects.create(user=user,
-                                         external_id=ext_id,
-                                         sso_logged_in=True)
+                sso = SsoRecord.objects.create(
+                    user=User.objects.get(email=email),
+                    external_id=ext_id,
+                    sso_logged_in=True)
             except User.DoesNotExist:
                 # Else create user and sso record.
                 return None
-        return user
+
+        sso.sso_logged_in = True
+        sso.save()
+        self.update_user_from_params(sso.user, params)
+        return sso.user
 
     def update_user_from_params(self, user, params):
         user.first_name = params.get('first_name', [None])[0]
         user.last_name = params.get('last_name', [None])[0]
-        user.email = params['email'][0] # Email is not optional
+        user.email = params['email'][0]  # Email is not optional
         user.save()
