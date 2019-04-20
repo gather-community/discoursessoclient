@@ -85,6 +85,16 @@ class SsoLoginTestCase(TestCase):
         qs = {'sso': payload, 'sig': self.sign(payload)}
         self.call_middleware(qs, {'sso_nonce': '31ab53'}, asserts)
 
+    def test_nonce_expiry(self):
+        def asserts(request, response):
+            self.assertIsNone(request.session.get('sso_nonce'))
+
+        payload = 'sso_nonce=31ab53'
+        payload = self.encode(payload)
+        qs = {'sso': payload, 'sig': self.sign(payload)}
+        self.call_middleware(qs, {'sso_nonce': '31ab53'}, asserts)
+
+
     @patch.object(auth, 'login')
     def test_with_matching_external_id(self, mock):
         def asserts(request, response):

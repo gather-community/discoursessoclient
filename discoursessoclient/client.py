@@ -56,6 +56,9 @@ class DiscourseSsoClientMiddleware:
                             .decode(encoding='utf-8')
             if nonce not in qstring:
                 return HttpResponseBadRequest('wrong_nonce_in_payload')
+            else:
+                # At this point we've validated the nonce so we can expire it.
+                del request.session['sso_nonce']
         except ValueError:
             return HttpResponseBadRequest('bad_payload_encoding')
 
