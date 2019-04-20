@@ -4,8 +4,12 @@ import hmac
 import secrets
 import urllib.parse
 
-from django.http import HttpResponseBadRequest, HttpResponseRedirect
 from django.conf import settings
+from django.contrib import auth
+from django.http import HttpResponseBadRequest, HttpResponseRedirect
+
+from discoursessoclient.models import SsoRecord
+
 
 
 class DiscourseSsoClientMiddleware:
@@ -24,7 +28,7 @@ class DiscourseSsoClientMiddleware:
     def sso_init(self, request):
         nonce = request.session['sso_nonce'] = secrets.token_hex(16)
         return_url = settings.SSO_CLIENT_BASE_URL
-        payload = f'nonce={nonce}&return_sso_url={return_url}/login'
+        payload = f'nonce={nonce}&return_sso_url={return_url}/sso/login'
         payload = base64.b64encode(bytes(payload, encoding='utf-8'))
         signature = self.sign_payload(str(payload))
         payload = urllib.parse.quote_plus(str(payload))
@@ -48,8 +52,8 @@ class DiscourseSsoClientMiddleware:
 
         nonce = request.session['sso_nonce']
         try:
-            decoded = str(base64.decodestring(bytes(payload, encoding='utf-8')))
-            if nonce not in decoded:
+            qstring = base64.decodestring(payload.encode(encoding='utf-8')).decode(encoding='utf-8')
+            if nonce not in qstring:
                 return HttpResponseBadRequest('wrong_nonce_in_payload')
         except ValueError:
             return HttpResponseBadRequest('bad_payload_encoding')
@@ -57,9 +61,21 @@ class DiscourseSsoClientMiddleware:
         if not hmac.compare_digest(self.sign_payload(payload), signature):
             return HttpResponseBadRequest('invalid_signature')
 
-        parse_qs(payload, strict_parsing=True)
+        params = urllib.parse.parse_qs(qstring, strict_parsing=True)
+        if 'external_id' not in params:
+            return HttpResponseBadRequest('missing_external_id')
+        if 'email' not in params:
+            return HttpResponseBadRequest('missing_email')
 
-        return HttpResponseBadRequest('good_so_far')
+        user = self.get_user(params)
+        request.user = user
+        auth.login(request, user)
+
+        # If next was passed, redirect there, else redirect to root.
+        if request.GET.get('next') is None:
+            return HttpResponseRedirect(settings.SSO_CLIENT_BASE_URL)
+        else:
+            return HttpResponseRedirect(request.GET.get('next'))
 
     # Generates signature for utf-8 string payload.
     def sign_payload(self, payload):
@@ -68,11 +84,15 @@ class DiscourseSsoClientMiddleware:
                         digestmod=hashlib.sha256).hexdigest()
 
 
-    def get_user(self, payload):
+    def get_user(self, params):
         # If existing sso record for external_id, update and return associated user
         # Else, if user with matching email, update them, create sso record, and return
         # Else, create user and sso record
-        1
+
+        try:
+            return SsoRecord.objects.get(external_id=params['external_id'][0]).user
+        except SsoRecord.DoesNotExist:
+            return None
 
     def update_user_from_sso_payload(self, user, payload):
         1
