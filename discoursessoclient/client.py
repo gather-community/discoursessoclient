@@ -4,7 +4,7 @@ import hmac
 import secrets
 import urllib.parse
 
-from django.shortcuts import redirect
+from django.http import HttpResponseBadRequest, HttpResponseRedirect
 from django.conf import settings
 
 
@@ -26,10 +26,13 @@ class DiscourseSsoClientMiddleware:
         return_url = settings.SSO_CLIENT_BASE_URL
         payload = f'nonce={nonce}&return_sso_url={return_url}/login'
         payload = base64.b64encode(bytes(payload, encoding='utf-8'))
-        key = settings.SSO_SECRET
-        signature = hmac.new(bytes(key, encoding='utf-8'),
-                             bytes(payload, encoding='utf-8'),
-                             digestmod=hashlib.sha256).hexdigest()
-        payload = urllib.parse.quote_plus(payload.decode('utf-8'))
+        signature = self.sign_payload(str(payload))
+        payload = urllib.parse.quote_plus(str(payload))
         to_url = f'{settings.SSO_PROVIDER_URL}?sso={payload}&sig={signature}'
-        return redirect(to_url)
+        return HttpResponseRedirect(to_url)
+
+    # Generates signature for utf-8 string payload.
+    def sign_payload(self, payload):
+        return hmac.new(bytes(settings.SSO_SECRET, encoding='utf-8'),
+                        bytes(payload, encoding='utf-8'),
+                        digestmod=hashlib.sha256).hexdigest()
