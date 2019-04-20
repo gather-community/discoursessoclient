@@ -92,15 +92,16 @@ class DiscourseSsoClientMiddleware:
             sso = SsoRecord.objects.get(external_id=ext_id)
         except SsoRecord.DoesNotExist:
             try:
-                # Else, if user with matching email,
-                # update them, create sso record, and return
+                # Else, look for user with matching email.
                 sso = SsoRecord.objects.create(
                     user=User.objects.get(email=email),
-                    external_id=ext_id,
-                    sso_logged_in=True)
+                    external_id=ext_id)
             except User.DoesNotExist:
                 # Else create user and sso record.
-                return None
+                user = User.objects.create(email=email)
+                sso = SsoRecord.objects.create(
+                    user=user,
+                    external_id=ext_id)
 
         sso.sso_logged_in = True
         sso.save()

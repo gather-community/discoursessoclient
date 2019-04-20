@@ -122,6 +122,27 @@ class SsoLoginTestCase(TestCase):
         qs = {'sso': payload, 'sig': self.sign(payload)}
         self.call_middleware(qs, {'sso_nonce': '31ab53'}, asserts)
 
+    @patch.object(auth, 'login')
+    def test_with_no_matching_email_or_external_id(self, mock):
+        def asserts(request, response):
+            self.assertEqual(response.status_code, 302)
+            self.assertEqual(response.url, 'https://example.org')
+            user2 = User.objects.filter(email='a@c.com').first()
+            mock.assert_called_with(request, user2)
+            sso = SsoRecord.objects.get(external_id=124)
+            self.assertTrue(sso.sso_logged_in)
+            self.assertEqual(sso.user, user2)
+            self.assertEqual(user2.email, 'a@c.com')
+            self.assertEqual(user2.first_name, 'M')
+            self.assertEqual(user2.last_name, 'B')
+
+        user = User.objects.create_user(username='x', email='a@b.com')
+        SsoRecord.objects.create(user=user, external_id='123', sso_logged_in=False)
+        payload = 'sso_nonce=31ab53&external_id=124&email=a@c.com&first_name=M&last_name=B'
+        payload = self.encode(payload)
+        qs = {'sso': payload, 'sig': self.sign(payload)}
+        self.call_middleware(qs, {'sso_nonce': '31ab53'}, asserts)
+
     def encode(self, payload):
         return base64.b64encode(payload.encode(encoding='utf-8')).decode(encoding='utf-8')
 
