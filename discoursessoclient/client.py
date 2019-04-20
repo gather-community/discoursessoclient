@@ -86,26 +86,30 @@ class DiscourseSsoClientMiddleware:
 
 
     def get_and_update_user(self, params):
-        # If existing sso record for external_id, update and return associated user
-        # Else, if user with matching email, update them, create sso record, and return
-        # Else, create user and sso record
-
         ext_id = params['external_id'][0]
         email = params['email'][0]
-        first_name = params.get('first_name', [None])[0]
-        last_name = params.get('last_name', [None])[0]
 
         try:
-            return SsoRecord.objects.get(external_id=ext_id).user
+            # If existing sso record for external_id,
+            # update and return associated user
+            user = SsoRecord.objects.get(external_id=ext_id).user
+            self.update_user_from_params(user, params)
         except SsoRecord.DoesNotExist:
             try:
+                # Else, if user with matching email,
+                # update them, create sso record, and return
                 user = User.objects.get(email=email)
-                user.first_name = first_name
-                user.last_name = last_name
-                user.save()
+                self.update_user_from_params(user, params)
                 SsoRecord.objects.create(user=user,
                                          external_id=ext_id,
                                          sso_logged_in=True)
-                return user
-            except SsoRecord.DoesNotExist:
+            except User.DoesNotExist:
+                # Else create user and sso record.
                 return None
+        return user
+
+    def update_user_from_params(self, user, params):
+        user.first_name = params.get('first_name', [None])[0]
+        user.last_name = params.get('last_name', [None])[0]
+        user.email = params['email'][0] # Email is not optional
+        user.save()
