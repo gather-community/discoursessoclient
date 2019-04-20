@@ -62,7 +62,8 @@ class SsoLoginTestCase(TestCase):
         def asserts(request, response):
             self.assertEqual(response.content, b'wrong_nonce_in_payload')
 
-        payload = base64.b64encode(b'sso_nonce=31ab53').decode(encoding='utf-8')
+        payload = 'sso_nonce=31ab53'
+        payload = self.encode(payload)
         qs = {'sso': payload, 'sig': ''}
         self.call_middleware(qs, {'sso_nonce': '31ab54'}, asserts)
 
@@ -70,7 +71,8 @@ class SsoLoginTestCase(TestCase):
         def asserts(request, response):
             self.assertEqual(response.content, b'missing_external_id')
 
-        payload = base64.b64encode(b'sso_nonce=31ab53').decode(encoding='utf-8')
+        payload = 'sso_nonce=31ab53'
+        payload = self.encode(payload)
         qs = {'sso': payload, 'sig': self.sign(payload)}
         self.call_middleware(qs, {'sso_nonce': '31ab53'}, asserts)
 
@@ -78,7 +80,8 @@ class SsoLoginTestCase(TestCase):
         def asserts(request, response):
             self.assertEqual(response.content, b'missing_email')
 
-        payload = base64.b64encode(b'sso_nonce=31ab53&external_id=123').decode(encoding='utf-8')
+        payload = 'sso_nonce=31ab53&external_id=123'
+        payload = self.encode(payload)
         qs = {'sso': payload, 'sig': self.sign(payload)}
         self.call_middleware(qs, {'sso_nonce': '31ab53'}, asserts)
 
@@ -95,7 +98,8 @@ class SsoLoginTestCase(TestCase):
 
         user = User.objects.create_user(username='x', email='a@b.com')
         SsoRecord.objects.create(user=user, external_id='123', sso_logged_in=True)
-        payload = base64.b64encode(b'sso_nonce=31ab53&external_id=123&email=a@c.com&first_name=M&last_name=B').decode(encoding='utf-8')
+        payload = 'sso_nonce=31ab53&external_id=123&email=a@c.com&first_name=M&last_name=B'
+        payload = self.encode(payload)
         qs = {'sso': payload, 'sig': self.sign(payload)}
         self.call_middleware(qs, {'sso_nonce': '31ab53'}, asserts)
 
@@ -112,9 +116,13 @@ class SsoLoginTestCase(TestCase):
 
         user = User.objects.create_user(username='x', email='a@b.com')
         SsoRecord.objects.create(user=user, external_id='123', sso_logged_in=True)
-        payload = base64.b64encode(b'sso_nonce=31ab53&external_id=124&email=a@b.com&first_name=M&last_name=B').decode(encoding='utf-8')
+        payload = 'sso_nonce=31ab53&external_id=124&email=a@b.com&first_name=M&last_name=B'
+        payload = self.encode(payload)
         qs = {'sso': payload, 'sig': self.sign(payload)}
         self.call_middleware(qs, {'sso_nonce': '31ab53'}, asserts)
+
+    def encode(self, payload):
+        return base64.b64encode(payload.encode(encoding='utf-8')).decode(encoding='utf-8')
 
     def sign(self, payload):
         return hmac.new(b'b54cc7b3e42b215d1792c300487f1cb1',
