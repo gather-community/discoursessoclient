@@ -24,10 +24,10 @@ class SsoInitTestCase(TestCase):
             self.assertEqual(
                 response.url,
                 'https://example.com/sso?sso='
-                'b%27bm9uY2U9MjI4Y2QyNWJkMjRiYmMzMWEyYmZjODFmZjhlYTZkMzk'
-                'mcmV0dXJuX3Nzb191cmw9aHR0cHM6Ly9sb2NhbGhvc3Q6ODAwMC9zc2'
-                '8vbG9naW4%3D%27&sig=b35fd875d9442f0569732f9617a7dde1404'
-                '7f8c85725512ef441b5d14f3ad55b')
+                'bm9uY2U9MjI4Y2QyNWJkMjRiYmMzMWEyYmZjODFmZjhlYTZkMzkmcmV'
+                '0dXJuX3Nzb191cmw9aHR0cDovL2xvY2FsaG9zdDo4MDAwL3Nzby9sb2'
+                'dpbg%3D%3D&sig=bb9e4e89d23fef29c86461991e80f3e5bb3f1bf5'
+                '9d52200a858bf0f9e04971b4')
 
 class SsoLoginTestCase(TestCase):
 

@@ -29,9 +29,9 @@ class DiscourseSsoClientMiddleware:
         nonce = request.session['sso_nonce'] = secrets.token_hex(16)
         return_url = settings.SSO_CLIENT_BASE_URL
         payload = f'nonce={nonce}&return_sso_url={return_url}/sso/login'
-        payload = base64.b64encode(bytes(payload, encoding='utf-8'))
-        signature = self.sign_payload(str(payload))
-        payload = urllib.parse.quote_plus(str(payload))
+        payload = base64.b64encode(payload.encode(encoding='utf-8'))
+        signature = self.sign_payload(payload)
+        payload = urllib.parse.quote_plus(payload.decode(encoding='utf-8'))
         to_url = f'{settings.SSO_PROVIDER_URL}?sso={payload}&sig={signature}'
         return HttpResponseRedirect(to_url)
 
@@ -81,10 +81,14 @@ class DiscourseSsoClientMiddleware:
         else:
             return HttpResponseRedirect(request.GET.get('next'))
 
-    # Generates signature for utf-8 string payload.
+    # Generates signature for string or bytes payload.
     def sign_payload(self, payload):
-        return hmac.new(bytes(settings.SSO_SECRET, encoding='utf-8'),
-                        bytes(payload, encoding='utf-8'),
+        try:
+            payload = payload.encode(encoding='utf-8')
+        except AttributeError:
+            pass
+        return hmac.new(settings.SSO_SECRET.encode(encoding='utf-8'),
+                        payload,
                         digestmod=hashlib.sha256).hexdigest()
 
     def get_and_update_user(self, params):
