@@ -28,7 +28,8 @@ class DiscourseSsoClientMiddleware:
     def sso_init(self, request):
         nonce = request.session['sso_nonce'] = secrets.token_hex(16)
         return_url = settings.SSO_CLIENT_BASE_URL
-        payload = f'nonce={nonce}&return_sso_url={return_url}/sso/login'
+        next_url = request.GET.get('next', [None])[0]
+        payload = f'nonce={nonce}&return_sso_url={return_url}/sso/login&custom.next={next_url}'
         payload = base64.b64encode(payload.encode(encoding='utf-8'))
         signature = self.sign_payload(payload)
         payload = urllib.parse.quote_plus(payload.decode(encoding='utf-8'))
@@ -76,10 +77,10 @@ class DiscourseSsoClientMiddleware:
         auth.login(request, user)
 
         # If next was passed, redirect there, else redirect to root.
-        if request.GET.get('next') is None:
+        if params.get('custom.next') is None:
             return HttpResponseRedirect(settings.SSO_CLIENT_BASE_URL)
         else:
-            return HttpResponseRedirect(request.GET.get('next'))
+            return HttpResponseRedirect(params.get('custom.next')[0])
 
     # Generates signature for string or bytes payload.
     def sign_payload(self, payload):

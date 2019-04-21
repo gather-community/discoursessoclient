@@ -17,17 +17,19 @@ class SsoInitTestCase(TestCase):
     @patch('secrets.token_hex',
            return_value='228cd25bd24bbc31a2bfc81ff8ea6d39')
     def test_sso_init(self, _):
-        request = Mock(path="/sso/init", session={})
+        qs = {'next': '/foo'}
+        get = Mock(get=lambda x, _: qs[x] if x in qs else None)
+        request = Mock(path="/sso/init", session={}, GET=get)
         with self.settings(SSO_PROVIDER_URL='https://example.com/sso',
                            SSO_SECRET='b54cc7b3e42b215d1792c300487f1cb1'):
             response = self.middleware.__call__(request)
             self.assertEqual(
                 response.url,
                 'https://example.com/sso?sso='
-                'bm9uY2U9MjI4Y2QyNWJkMjRiYmMzMWEyYmZjODFmZjhlYTZkMzkmcmV'
-                '0dXJuX3Nzb191cmw9aHR0cDovL2xvY2FsaG9zdDo4MDAwL3Nzby9sb2'
-                'dpbg%3D%3D&sig=bb9e4e89d23fef29c86461991e80f3e5bb3f1bf5'
-                '9d52200a858bf0f9e04971b4')
+                'bm9uY2U9MjI4Y2QyNWJkMjRiYmMzMWEyYmZjODFmZjhlYTZkMzkmcmV0dXJu'
+                'X3Nzb191cmw9aHR0cDovL2xvY2FsaG9zdDo4MDAwL3Nzby9sb2dpbiZjdXN0'
+                'b20ubmV4dD0v&sig=9c5ec449c4aa37e2522519728c3b038c57f0bf6365f'
+                '74f5bb9ba75467dd0f6db')
 
 class SsoLoginTestCase(TestCase):
 
@@ -96,10 +98,10 @@ class SsoLoginTestCase(TestCase):
 
 
     @patch.object(auth, 'login')
-    def test_with_matching_external_id(self, mock):
+    def test_with_matching_external_id_and_next_url(self, mock):
         def asserts(request, response):
             self.assertEqual(response.status_code, 302)
-            self.assertEqual(response.url, 'https://example.org')
+            self.assertEqual(response.url, '/foo')
             mock.assert_called_with(request, user)
             self.assertTrue(SsoRecord.objects.get(external_id=123).sso_logged_in)
             user.refresh_from_db()
@@ -109,7 +111,7 @@ class SsoLoginTestCase(TestCase):
 
         user = User.objects.create_user(username='x', email='a@b.com')
         SsoRecord.objects.create(user=user, external_id='123', sso_logged_in=False)
-        payload = 'sso_nonce=31ab53&external_id=123&email=a@c.com&custom.first_name=M&custom.last_name=B'
+        payload = 'sso_nonce=31ab53&external_id=123&email=a@c.com&custom.first_name=M&custom.last_name=B&custom.next=/foo'
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': self.sign(payload)}
         self.call_middleware(qs, {'sso_nonce': '31ab53'}, asserts)
