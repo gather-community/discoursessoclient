@@ -116,7 +116,7 @@ class DiscourseSsoClientMiddleware:
         return sso.user
 
     def update_user_from_params(self, user, params):
-        user.first_name = params.get('first_name', [None])[0]
-        user.last_name = params.get('last_name', [None])[0]
+        user.first_name = params.get('custom.first_name', [None])[0]
+        user.last_name = params.get('custom.last_name', [None])[0]
         user.email = params['email'][0]  # Email is not optional
         user.save()
