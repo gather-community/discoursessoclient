@@ -28,8 +28,8 @@ class SsoInitTestCase(TestCase):
                 'https://example.com/sso?sso='
                 'bm9uY2U9MjI4Y2QyNWJkMjRiYmMzMWEyYmZjODFmZjhlYTZkMzkmcmV0dXJu'
                 'X3Nzb191cmw9aHR0cDovL2xvY2FsaG9zdDo4MDAwL3Nzby9sb2dpbiZjdXN0'
-                'b20ubmV4dD0v&sig=9c5ec449c4aa37e2522519728c3b038c57f0bf6365f'
-                '74f5bb9ba75467dd0f6db')
+                'b20ubmV4dD0vZm9v&sig=b570eb834187a663bec96f33810718ba15183ce'
+                '56461689b4462cee9741d2c7b')
 
 class SsoLoginTestCase(TestCase):
 
