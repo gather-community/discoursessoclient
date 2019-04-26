@@ -18,7 +18,7 @@ class SsoInitTestCase(TestCase):
            return_value='228cd25bd24bbc31a2bfc81ff8ea6d39')
     def test_sso_init(self, _):
         qs = {'next': '/foo'}
-        get = Mock(get=lambda x, _: qs[x] if x in qs else None)
+        get = Mock(get=lambda x: qs[x] if x in qs else None)
         request = Mock(path="/sso/init", session={}, GET=get)
         with self.settings(SSO_PROVIDER_URL='https://example.com/sso',
                            SSO_SECRET='b54cc7b3e42b215d1792c300487f1cb1'):

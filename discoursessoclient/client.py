@@ -28,7 +28,7 @@ class DiscourseSsoClientMiddleware:
     def sso_init(self, request):
         nonce = request.session['sso_nonce'] = secrets.token_hex(16)
         return_url = settings.SSO_CLIENT_BASE_URL
-        next_url = request.GET.get('next', [None])[0]
+        next_url = request.GET.get('next')
         payload = f'nonce={nonce}&return_sso_url={return_url}/sso/login&custom.next={next_url}'
         payload = base64.b64encode(payload.encode(encoding='utf-8'))
         signature = self.sign_payload(payload)
