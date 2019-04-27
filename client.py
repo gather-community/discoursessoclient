@@ -56,19 +56,21 @@ class DiscourseSsoClientMiddleware:
         try:
             qstring = base64.decodestring(payload.encode(encoding='utf-8')) \
                             .decode(encoding='utf-8')
-            if nonce not in qstring:
-                return HttpResponseBadRequest('wrong_nonce_in_payload')
-            else:
-                # At this point we've validated the nonce so we can expire it.
-                del request.session['sso_nonce']
         except ValueError:
             return HttpResponseBadRequest('bad_payload_encoding')
 
         if not hmac.compare_digest(self.sign_payload(payload), signature):
             return HttpResponseBadRequest('invalid_signature')
 
+        if nonce not in qstring:
+            return HttpResponseBadRequest('wrong_nonce_in_payload')
+
         if time.time() > request.session['sso_expiry']:
             return HttpResponseBadRequest('expired_nonce')
+
+        # At this point we've validated the nonce so we can remove it.
+        del request.session['sso_nonce']
+        del request.session['sso_expiry']
 
         params = urllib.parse.parse_qs(qstring, strict_parsing=True)
         if 'external_id' not in params:

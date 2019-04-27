@@ -62,15 +62,6 @@ class SsoLoginTestCase(TestCase):
         qs = {'sso': 'x', 'sig': ''}
         self.call_middleware(qs, self.session(), asserts)
 
-    def test_with_wrong_nonce(self):
-        def asserts(request, response):
-            self.assertEqual(response.content, b'wrong_nonce_in_payload')
-
-        payload = 'sso_nonce=31ab54'
-        payload = self.encode(payload)
-        qs = {'sso': payload, 'sig': ''}
-        self.call_middleware(qs, self.session(), asserts)
-
     def test_with_bad_signature(self):
         def asserts(request, response):
             self.assertEqual(response.content, b'invalid_signature')
@@ -78,6 +69,15 @@ class SsoLoginTestCase(TestCase):
         payload = 'sso_nonce=31ab53'
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': 'xxx'}
+        self.call_middleware(qs, self.session(), asserts)
+
+    def test_with_wrong_nonce(self):
+        def asserts(request, response):
+            self.assertEqual(response.content, b'wrong_nonce_in_payload')
+
+        payload = 'sso_nonce=31ab54'
+        payload = self.encode(payload)
+        qs = {'sso': payload, 'sig': self.sign(payload)}
         self.call_middleware(qs, self.session(), asserts)
 
     def test_with_expired_nonce(self):
@@ -110,6 +110,7 @@ class SsoLoginTestCase(TestCase):
     def test_nonce_deletion_after_login_attempt(self):
         def asserts(request, response):
             self.assertIsNone(request.session.get('sso_nonce'))
+            self.assertIsNone(request.session.get('sso_expiry'))
 
         payload = 'sso_nonce=31ab53'
         payload = self.encode(payload)
