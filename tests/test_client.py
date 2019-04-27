@@ -108,10 +108,11 @@ class SsoLoginTestCase(TestCase):
             self.assertEqual(user.email, 'a@c.com')
             self.assertEqual(user.first_name, 'M')
             self.assertEqual(user.last_name, 'B')
+            self.assertEqual(user.username, 'z')
 
         user = User.objects.create_user(username='x', email='a@b.com')
         SsoRecord.objects.create(user=user, external_id='123', sso_logged_in=False)
-        payload = 'sso_nonce=31ab53&external_id=123&email=a@c.com&custom.first_name=M&custom.last_name=B&custom.next=/foo'
+        payload = 'sso_nonce=31ab53&username=z&external_id=123&email=a@c.com&custom.first_name=M&custom.last_name=B&custom.next=/foo'
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': self.sign(payload)}
         self.call_middleware(qs, {'sso_nonce': '31ab53'}, asserts)
@@ -126,10 +127,11 @@ class SsoLoginTestCase(TestCase):
             user.refresh_from_db()
             self.assertEqual(user.first_name, 'M')
             self.assertEqual(user.last_name, 'B')
+            self.assertEqual(user.username, 'z')
 
         user = User.objects.create_user(username='x', email='a@b.com')
         SsoRecord.objects.create(user=user, external_id='123', sso_logged_in=False)
-        payload = 'sso_nonce=31ab53&external_id=124&email=a@b.com&custom.first_name=M&custom.last_name=B'
+        payload = 'sso_nonce=31ab53&username=z&external_id=124&email=a@b.com&custom.first_name=M&custom.last_name=B'
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': self.sign(payload)}
         self.call_middleware(qs, {'sso_nonce': '31ab53'}, asserts)
@@ -147,10 +149,11 @@ class SsoLoginTestCase(TestCase):
             self.assertEqual(user2.email, 'a@c.com')
             self.assertEqual(user2.first_name, 'M')
             self.assertEqual(user2.last_name, 'B')
+            self.assertEqual(user2.username, 'z')
 
         user = User.objects.create_user(username='x', email='a@b.com')
         SsoRecord.objects.create(user=user, external_id='123', sso_logged_in=False)
-        payload = 'sso_nonce=31ab53&external_id=124&email=a@c.com&custom.first_name=M&custom.last_name=B'
+        payload = 'sso_nonce=31ab53&username=z&external_id=124&email=a@c.com&custom.first_name=M&custom.last_name=B'
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': self.sign(payload)}
         self.call_middleware(qs, {'sso_nonce': '31ab53'}, asserts)
