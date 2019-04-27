@@ -2,6 +2,7 @@ import base64
 import hashlib
 import hmac
 import secrets
+import time
 import urllib.parse
 
 from django.conf import settings
@@ -65,6 +66,9 @@ class DiscourseSsoClientMiddleware:
 
         if not hmac.compare_digest(self.sign_payload(payload), signature):
             return HttpResponseBadRequest('invalid_signature')
+
+        if time.time() > request.session['sso_expiry']:
+            return HttpResponseBadRequest('expired_nonce')
 
         params = urllib.parse.parse_qs(qstring, strict_parsing=True)
         if 'external_id' not in params:

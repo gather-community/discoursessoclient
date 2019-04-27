@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import hmac
+import time
 from django.test import TestCase
 from unittest.mock import Mock, patch
 
@@ -58,17 +59,17 @@ class SsoLoginTestCase(TestCase):
         def asserts(request, response):
             self.assertEqual(response.content, b'bad_payload_encoding')
 
-        self.call_middleware({'sso': 'x', 'sig': ''},
-            {'sso_nonce': 'y'}, asserts)
+        qs = {'sso': 'x', 'sig': ''}
+        self.call_middleware(qs, self.session(), asserts)
 
     def test_with_wrong_nonce(self):
         def asserts(request, response):
             self.assertEqual(response.content, b'wrong_nonce_in_payload')
 
-        payload = 'sso_nonce=31ab53'
+        payload = 'sso_nonce=31ab54'
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': ''}
-        self.call_middleware(qs, {'sso_nonce': '31ab54'}, asserts)
+        self.call_middleware(qs, self.session(), asserts)
 
     def test_with_bad_signature(self):
         def asserts(request, response):
@@ -77,7 +78,16 @@ class SsoLoginTestCase(TestCase):
         payload = 'sso_nonce=31ab53'
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': 'xxx'}
-        self.call_middleware(qs, {'sso_nonce': '31ab53'}, asserts)
+        self.call_middleware(qs, self.session(), asserts)
+
+    def test_with_expired_nonce(self):
+        def asserts(request, response):
+            self.assertEqual(response.content, b'expired_nonce')
+
+        payload = 'sso_nonce=31ab53'
+        payload = self.encode(payload)
+        qs = {'sso': payload, 'sig': self.sign(payload)}
+        self.call_middleware(qs, self.session(expiry=time.time() - 10), asserts)
 
     def test_with_no_external_id(self):
         def asserts(request, response):
@@ -86,7 +96,7 @@ class SsoLoginTestCase(TestCase):
         payload = 'sso_nonce=31ab53'
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': self.sign(payload)}
-        self.call_middleware(qs, {'sso_nonce': '31ab53'}, asserts)
+        self.call_middleware(qs, self.session(), asserts)
 
     def test_with_no_email(self):
         def asserts(request, response):
@@ -95,17 +105,16 @@ class SsoLoginTestCase(TestCase):
         payload = 'sso_nonce=31ab53&external_id=123'
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': self.sign(payload)}
-        self.call_middleware(qs, {'sso_nonce': '31ab53'}, asserts)
+        self.call_middleware(qs, self.session(), asserts)
 
-    def test_nonce_expiry(self):
+    def test_nonce_deletion_after_login_attempt(self):
         def asserts(request, response):
             self.assertIsNone(request.session.get('sso_nonce'))
 
         payload = 'sso_nonce=31ab53'
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': self.sign(payload)}
-        self.call_middleware(qs, {'sso_nonce': '31ab53'}, asserts)
-
+        self.call_middleware(qs, self.session(), asserts)
 
     @patch.object(auth, 'login')
     def test_with_matching_external_id_and_next_url(self, mock):
@@ -125,7 +134,7 @@ class SsoLoginTestCase(TestCase):
         payload = 'sso_nonce=31ab53&username=z&external_id=123&email=a@c.com&custom.first_name=M&custom.last_name=B&custom.next=/foo'
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': self.sign(payload)}
-        self.call_middleware(qs, {'sso_nonce': '31ab53'}, asserts)
+        self.call_middleware(qs, self.session(), asserts)
 
     @patch.object(auth, 'login')
     def test_with_matching_email_but_not_external_id(self, mock):
@@ -144,7 +153,7 @@ class SsoLoginTestCase(TestCase):
         payload = 'sso_nonce=31ab53&username=z&external_id=124&email=a@b.com&custom.first_name=M&custom.last_name=B'
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': self.sign(payload)}
-        self.call_middleware(qs, {'sso_nonce': '31ab53'}, asserts)
+        self.call_middleware(qs, self.session(), asserts)
 
     @patch.object(auth, 'login')
     def test_with_no_matching_email_or_external_id(self, mock):
@@ -166,7 +175,7 @@ class SsoLoginTestCase(TestCase):
         payload = 'sso_nonce=31ab53&username=z&external_id=124&email=a@c.com&custom.first_name=M&custom.last_name=B'
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': self.sign(payload)}
-        self.call_middleware(qs, {'sso_nonce': '31ab53'}, asserts)
+        self.call_middleware(qs, self.session(), asserts)
 
     def encode(self, payload):
         return base64.b64encode(payload.encode(encoding='utf-8')).decode(encoding='utf-8')
@@ -175,6 +184,9 @@ class SsoLoginTestCase(TestCase):
         return hmac.new(b'b54cc7b3e42b215d1792c300487f1cb1',
                         payload.encode(encoding='utf-8'),
                         digestmod=hashlib.sha256).hexdigest()
+
+    def session(self, expiry=None):
+        return {'sso_nonce': '31ab53', 'sso_expiry': expiry or time.time() + 2000}
 
     def call_middleware(self, qs, session, func):
         get = Mock(get=lambda x: qs[x] if x in qs else None)
