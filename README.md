@@ -19,14 +19,13 @@ Implemented as Django middleware.
 
         # The URL of the SSO provider endpoint as described in the Discourse protocol.
         # Typically a system that you control where users' credentials are stored and where sign-in takes place.
-        SSO_PROVIDER_URL = 'http://example.com/sso'
+        SSO_PROVIDER_URL = 'https://example.com/sso'
 
         # The base URL of the server where this app is being used. Needed below to construct the LOGIN_URL.
-        SSO_CLIENT_BASE_URL = 'http://example.org'
-
-        # This is a Django setting. It doesn't need to be changed but should be the only instance of LOGIN_URL
-        # in your settings.py file.
-        LOGIN_URL = f'{SSO_CLIENT_BASE_URL}/sso/init'
+        SSO_CLIENT_BASE_URL = 'https://example.org'
+1. Ensure the `LOGIN_URL` setting is pointing at `/sso/init`. This can either be by entering that path explicitly or,
+if your app is expecting a named URL pattern in that setting, by creating a named URL pattern pointing at
+`/sso/init` and entering its name as `LOGIN_URL`.
 1. Run migrations.
 1. Attempt to visit a protected resource. You should be redirected to the SSO_PROVIDER_URL with a proper payload, initiating the SSO flow.
 
