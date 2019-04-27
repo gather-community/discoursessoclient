@@ -58,7 +58,8 @@ class SsoLoginTestCase(TestCase):
         def asserts(request, response):
             self.assertEqual(response.content, b'bad_payload_encoding')
 
-        self.call_middleware({'sso': 'x', 'sig': ''}, {'sso_nonce': 'y'}, asserts)
+        self.call_middleware({'sso': 'x', 'sig': ''},
+            {'sso_nonce': 'y'}, asserts)
 
     def test_with_wrong_nonce(self):
         def asserts(request, response):
@@ -68,6 +69,15 @@ class SsoLoginTestCase(TestCase):
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': ''}
         self.call_middleware(qs, {'sso_nonce': '31ab54'}, asserts)
+
+    def test_with_bad_signature(self):
+        def asserts(request, response):
+            self.assertEqual(response.content, b'invalid_signature')
+
+        payload = 'sso_nonce=31ab53'
+        payload = self.encode(payload)
+        qs = {'sso': payload, 'sig': 'xxx'}
+        self.call_middleware(qs, {'sso_nonce': '31ab53'}, asserts)
 
     def test_with_no_external_id(self):
         def asserts(request, response):
