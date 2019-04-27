@@ -28,6 +28,7 @@ class DiscourseSsoClientMiddleware:
 
     def sso_init(self, request):
         nonce = request.session['sso_nonce'] = secrets.token_hex(16)
+        request.session['sso_expiry'] = time.time() + 60 * 10
         return_url = settings.SSO_CLIENT_BASE_URL
         next_url = request.GET.get('next')
         payload = f'nonce={nonce}&return_sso_url={return_url}/sso/login&custom.next={next_url}'

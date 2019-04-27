@@ -24,6 +24,8 @@ class SsoInitTestCase(TestCase):
         with self.settings(SSO_PROVIDER_URL='https://example.com/sso',
                            SSO_SECRET='b54cc7b3e42b215d1792c300487f1cb1'):
             response = self.middleware.__call__(request)
+            self.assertIsNotNone(request.session['sso_nonce'])
+            self.assertIsNotNone(request.session['sso_expiry'])
             self.assertEqual(
                 response.url,
                 'https://example.com/sso?sso='
@@ -187,7 +189,7 @@ class SsoLoginTestCase(TestCase):
                         digestmod=hashlib.sha256).hexdigest()
 
     def session(self, expiry=None):
-        return {'sso_nonce': '31ab53', 'sso_expiry': expiry or time.time() + 2000}
+        return {'sso_nonce': '31ab53', 'sso_expiry': expiry or time.time() + 600}
 
     def call_middleware(self, qs, session, func):
         get = Mock(get=lambda x: qs[x] if x in qs else None)
