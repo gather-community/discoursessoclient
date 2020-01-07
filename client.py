@@ -9,11 +9,9 @@ from django.conf import settings
 from django.contrib import auth
 from django.contrib.auth.models import User
 from django.http import HttpResponseBadRequest, HttpResponseRedirect
-
+from allauth.account.models import EmailAddress
 from django_mailman3.models import Profile
-
 from discoursessoclient.models import SsoRecord
-
 
 class DiscourseSsoClientMiddleware:
     def __init__(self, get_response):
@@ -131,6 +129,14 @@ class DiscourseSsoClientMiddleware:
         user.last_name = params.get('custom.last_name', [None])[0]
         user.email = params['email'][0]  # Email is not optional
         user.save()
+
+        try:
+            address = EmailAddress.objects.get(user_id=user.id)
+            address.verified = True
+            address.save()
+        except EmailAddress.DoesNotExist:
+            EmailAddress.objects.create(user=user, email=user.email, verified=True)
+
         if params.get('custom.timezone') is not None:
             profile = Profile.objects.get(user=user)
             profile.timezone = params.get('custom.timezone')[0]

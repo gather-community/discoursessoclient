@@ -7,9 +7,8 @@ from unittest.mock import Mock, patch
 
 from django.contrib import auth
 from django.contrib.auth.models import User
-
 from django_mailman3.models import Profile
-
+from allauth.account.models import EmailAddress
 from discoursessoclient.client import DiscourseSsoClientMiddleware
 from discoursessoclient.models import SsoRecord
 
@@ -122,7 +121,7 @@ class SsoLoginTestCase(TestCase):
         self.call_middleware(qs, self.session(), asserts)
 
     @patch.object(auth, 'login')
-    def test_with_matching_external_id_and_next_url(self, mock):
+    def test_with_matching_external_id_and_email(self, mock):
         def asserts(request, response):
             self.assertEqual(response.status_code, 302)
             self.assertEqual(response.url, '/foo')
@@ -134,8 +133,10 @@ class SsoLoginTestCase(TestCase):
             self.assertEqual(user.last_name, 'B')
             self.assertEqual(user.username, 'z')
             self.assertEqual(Profile.objects.get(user=user).timezone, 'America/St_Vincent')
+            self.assertTrue(EmailAddress.objects.get(user_id=user.id).verified)
 
         user = User.objects.create_user(username='x', email='a@b.com')
+        EmailAddress.objects.create(user=user, email=user.email, verified=False)
         SsoRecord.objects.create(user=user, external_id='123', sso_logged_in=False)
         payload = 'sso_nonce=31ab53&username=z&external_id=123&email=a@c.com&custom.first_name=M&custom.last_name=B&custom.timezone=America/St_Vincent&custom.next=/foo'
         payload = self.encode(payload)
@@ -153,8 +154,10 @@ class SsoLoginTestCase(TestCase):
             self.assertEqual(user.first_name, 'M')
             self.assertEqual(user.last_name, 'B')
             self.assertEqual(user.username, 'z')
+            self.assertTrue(EmailAddress.objects.get(user_id=user.id).verified)
 
         user = User.objects.create_user(username='x', email='a@b.com')
+        EmailAddress.objects.create(user=user, email=user.email, verified=False)
         SsoRecord.objects.create(user=user, external_id='123', sso_logged_in=False)
         payload = 'sso_nonce=31ab53&username=z&external_id=124&email=a@b.com&custom.first_name=M&custom.last_name=B'
         payload = self.encode(payload)
@@ -175,9 +178,10 @@ class SsoLoginTestCase(TestCase):
             self.assertEqual(user2.first_name, 'M')
             self.assertEqual(user2.last_name, 'B')
             self.assertEqual(user2.username, 'z')
+            self.assertTrue(EmailAddress.objects.get(user_id=user2.id).verified)
 
-        user = User.objects.create_user(username='x', email='a@b.com')
-        SsoRecord.objects.create(user=user, external_id='123', sso_logged_in=False)
+        decoy_user = User.objects.create_user(username='x', email='a@b.com')
+        SsoRecord.objects.create(user=decoy_user, external_id='123', sso_logged_in=False)
         payload = 'sso_nonce=31ab53&username=z&external_id=124&email=a@c.com&custom.first_name=M&custom.last_name=B'
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': self.sign(payload)}

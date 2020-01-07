@@ -2,7 +2,12 @@
 
 A Django implementation of the client side of the [Discourse SSO protocol](https://meta.discourse.org/t/official-single-sign-on-for-discourse-sso/13045).
 
-Currently depends on django_mailman3 for saving timezone settings. This could easily be removed, though.
+Aside from Django, currently depends on:
+
+* `django_mailman3.models.Profile` (saves timezone settings)
+* `allauth.account.models.EmailAddress` (saves verified email address record)
+
+These could easily be removed, though.
 
 Implemented as Django middleware.
 
