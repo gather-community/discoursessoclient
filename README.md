@@ -2,6 +2,8 @@
 
 A Django implementation of the client side of the [Discourse SSO protocol](https://meta.discourse.org/t/official-single-sign-on-for-discourse-sso/13045).
 
+Currently depends on django_mailman3 for saving timezone settings. This could easily be removed, though.
+
 Implemented as Django middleware.
 
 ## Production Use
@@ -35,8 +37,11 @@ To work on this app in development:
 
 1. Create a sample Django project.
 1. Add a view protected with `@login_required` and map it to a URL. Confirm that you see the login page when attempting to view it.
+1. `pip install django-allauth`
+1. Check out the django_mailman3 and mailmanclient repos in separate directories and create symlinks into their inner module dirs in your sample project.
+1. Add `django_mailman3`, `mailmanclient`, `allauth`, `allauth.account`, and `django.contrib.sites` to your `INSTALLED_APPS`, and set `SITE_ID = 1` in your settings.py.
 1. Add the discoursessoclient app as described above.
-1. Run the tests with `python manage.py test`.
+1. Run the tests with `python manage.py test discoursessoclient.tests`.
 1. Visit the protected URL again. You should be redirected to SSO_PROVIDER_URL. You can either set up a
 separate development server at that URL to implement the provider portion of the flow, or manually decode
 the payload and make a new one to send back to `/sso/login` to test the rest of the flow.

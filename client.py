@@ -10,6 +10,8 @@ from django.contrib import auth
 from django.contrib.auth.models import User
 from django.http import HttpResponseBadRequest, HttpResponseRedirect
 
+from django_mailman3.models import Profile
+
 from discoursessoclient.models import SsoRecord
 
 
@@ -129,3 +131,7 @@ class DiscourseSsoClientMiddleware:
         user.last_name = params.get('custom.last_name', [None])[0]
         user.email = params['email'][0]  # Email is not optional
         user.save()
+        if params.get('custom.timezone') is not None:
+            profile = Profile.objects.get(user=user)
+            profile.timezone = params.get('custom.timezone')[0]
+            profile.save()
