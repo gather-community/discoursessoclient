@@ -12,34 +12,30 @@ from allauth.account.models import EmailAddress
 from discoursessoclient.client import DiscourseSsoClientMiddleware
 from discoursessoclient.models import SsoRecord
 
-class SsoInitTestCase(TestCase):
+class SsoTestMixin:
     def setUp(self):
         self.middleware = DiscourseSsoClientMiddleware(lambda x: x)
 
-    @patch('secrets.token_hex',
-           return_value='228cd25bd24bbc31a2bfc81ff8ea6d39')
-    def test_sso_init(self, _):
-        qs = {'next': '/foo'}
-        get = Mock(get=lambda x: qs[x] if x in qs else None)
-        request = Mock(path="/sso/init", session={}, GET=get)
+    def encode(self, payload):
+        return base64.b64encode(payload.encode(encoding='utf-8')).decode(encoding='utf-8')
+
+    def sign(self, payload):
+        return hmac.new(b'b54cc7b3e42b215d1792c300487f1cb1',
+                        payload.encode(encoding='utf-8'),
+                        digestmod=hashlib.sha256).hexdigest()
+
+    def mock_qs(self, qs):
+        return Mock(get=lambda x: qs[x] if x in qs else None)
+
+    def call_middleware(self, qs, session, func):
+        request = Mock(path=self.url, session=session, GET=self.mock_qs(qs))
         with self.settings(SSO_PROVIDER_URL='https://example.com/sso',
-                           SSO_SECRET='b54cc7b3e42b215d1792c300487f1cb1'):
+                           SSO_SECRET='b54cc7b3e42b215d1792c300487f1cb1',
+                           SSO_CLIENT_BASE_URL='https://example.org'):
             response = self.middleware.__call__(request)
-            self.assertIsNotNone(request.session['sso_nonce'])
-            self.assertIsNotNone(request.session['sso_expiry'])
-            self.assertEqual(
-                response.url,
-                'https://example.com/sso?sso='
-                'bm9uY2U9MjI4Y2QyNWJkMjRiYmMzMWEyYmZjODFmZjhlYTZkMzkmcmV0dXJu'
-                'X3Nzb191cmw9aHR0cDovL2xvY2FsaG9zdDo4MDAwL3Nzby9sb2dpbiZjdXN0'
-                'b20ubmV4dD0vZm9v&sig=b570eb834187a663bec96f33810718ba15183ce'
-                '56461689b4462cee9741d2c7b')
+            func(request, response)
 
-class SsoLoginTestCase(TestCase):
-
-    def setUp(self):
-        self.middleware = DiscourseSsoClientMiddleware(lambda x: x)
-
+class SsoWithPayloadTestMixin(SsoTestMixin):
     def test_with_no_payload(self):
         def asserts(request, response):
             self.assertEqual(response.status_code, 400)
@@ -58,7 +54,7 @@ class SsoLoginTestCase(TestCase):
             self.assertEqual(response.content, b'bad_payload_encoding')
 
         qs = {'sso': 'x', 'sig': ''}
-        self.call_middleware(qs, self.session(), asserts)
+        self.call_middleware(qs, {}, asserts)
 
     def test_with_bad_signature(self):
         def asserts(request, response):
@@ -67,7 +63,27 @@ class SsoLoginTestCase(TestCase):
         payload = 'sso_nonce=31ab53'
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': 'xxx'}
-        self.call_middleware(qs, self.session(), asserts)
+        self.call_middleware(qs, {}, asserts)
+
+class SsoInitTestCase(SsoTestMixin, TestCase):
+    url = '/sso/init'
+
+    @patch('secrets.token_hex',
+           return_value='228cd25bd24bbc31a2bfc81ff8ea6d39')
+    def test_sso_init(self, _):
+        def asserts(request, response):
+            self.assertIsNotNone(request.session['sso_nonce'])
+            self.assertIsNotNone(request.session['sso_expiry'])
+            self.assertEqual(
+                response.url,
+                'https://example.com/sso?sso=bm9uY2U9MjI4Y2QyNWJkMjRiYmMzMWEyYmZjODFmZjhlYTZkMzkmcmV'
+                '0dXJuX3Nzb191cmw9aHR0cHM6Ly9leGFtcGxlLm9yZy9zc28vbG9naW4mY3VzdG9tLm5leHQ9L2Zvbw%3D%'
+                '3D&sig=5f9033b9acd322e7a46e5781aece51f57eb5603e2fb9e425c4bc7fe83f06b71a')
+
+        self.call_middleware({'next': '/foo'}, {}, asserts)
+
+class SsoLoginTestCase(SsoWithPayloadTestMixin, TestCase):
+    url = '/sso/login'
 
     def test_with_no_nonce_in_session(self):
         def asserts(request, response):
@@ -96,6 +112,16 @@ class SsoLoginTestCase(TestCase):
         qs = {'sso': payload, 'sig': self.sign(payload)}
         self.call_middleware(qs, self.session(expiry=time.time() - 10), asserts)
 
+    def test_nonce_deletion_after_login_attempt(self):
+        def asserts(request, response):
+            self.assertIsNone(request.session.get('sso_nonce'))
+            self.assertIsNone(request.session.get('sso_expiry'))
+
+        payload = 'sso_nonce=31ab53'
+        payload = self.encode(payload)
+        qs = {'sso': payload, 'sig': self.sign(payload)}
+        self.call_middleware(qs, self.session(), asserts)
+
     def test_with_no_external_id(self):
         def asserts(request, response):
             self.assertEqual(response.content, b'missing_external_id')
@@ -110,16 +136,6 @@ class SsoLoginTestCase(TestCase):
             self.assertEqual(response.content, b'missing_email')
 
         payload = 'sso_nonce=31ab53&external_id=123'
-        payload = self.encode(payload)
-        qs = {'sso': payload, 'sig': self.sign(payload)}
-        self.call_middleware(qs, self.session(), asserts)
-
-    def test_nonce_deletion_after_login_attempt(self):
-        def asserts(request, response):
-            self.assertIsNone(request.session.get('sso_nonce'))
-            self.assertIsNone(request.session.get('sso_expiry'))
-
-        payload = 'sso_nonce=31ab53'
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': self.sign(payload)}
         self.call_middleware(qs, self.session(), asserts)
@@ -238,42 +254,11 @@ class SsoLoginTestCase(TestCase):
         qs = {'sso': payload, 'sig': self.sign(payload)}
         self.call_middleware(qs, self.session(), asserts)
 
-    def encode(self, payload):
-        return base64.b64encode(payload.encode(encoding='utf-8')).decode(encoding='utf-8')
-
-    def sign(self, payload):
-        return hmac.new(b'b54cc7b3e42b215d1792c300487f1cb1',
-                        payload.encode(encoding='utf-8'),
-                        digestmod=hashlib.sha256).hexdigest()
-
     def session(self, expiry=None):
         return {'sso_nonce': '31ab53', 'sso_expiry': expiry or time.time() + 600}
 
-    def call_middleware(self, qs, session, func):
-        get = Mock(get=lambda x: qs[x] if x in qs else None)
-        request = Mock(path="/sso/login",
-                       session=session,
-                       GET=get)
-        with self.settings(SSO_PROVIDER_URL='https://example.com/sso',
-                           SSO_SECRET='b54cc7b3e42b215d1792c300487f1cb1',
-                           SSO_CLIENT_BASE_URL='https://example.org'):
-            response = self.middleware.__call__(request)
-            func(request, response)
-
-class SsoUpdateTestCase(TestCase):
-
-    def setUp(self):
-        self.middleware = DiscourseSsoClientMiddleware(lambda x: x)
-
-    def test_with_bad_signature(self):
-        def asserts(request, response):
-            self.assertEqual(response.status_code, 400)
-            self.assertEqual(response.content, b'invalid_signature')
-
-        payload = 'stuff=things'
-        payload = self.encode(payload)
-        qs = {'sso': payload, 'sig': 'xxx'}
-        self.call_middleware(qs, asserts)
+class SsoUpdateTestCase(SsoWithPayloadTestMixin, TestCase):
+    url = '/sso/update'
 
     @patch.object(auth, 'login')
     def test_with_matching_external_id_and_email(self, mock):
@@ -299,21 +284,4 @@ class SsoUpdateTestCase(TestCase):
         payload = 'username=z&external_id=123&email=a@c.com&custom.first_name=M&custom.last_name=B&custom.timezone=America/St_Vincent'
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': self.sign(payload)}
-        self.call_middleware(qs, asserts)
-
-    def encode(self, payload):
-        return base64.b64encode(payload.encode(encoding='utf-8')).decode(encoding='utf-8')
-
-    def sign(self, payload):
-        return hmac.new(b'b54cc7b3e42b215d1792c300487f1cb1',
-                        payload.encode(encoding='utf-8'),
-                        digestmod=hashlib.sha256).hexdigest()
-
-    def call_middleware(self, qs, func):
-        get = Mock(get=lambda x: qs[x] if x in qs else None)
-        request = Mock(path="/sso/update", GET=get)
-        with self.settings(SSO_PROVIDER_URL='https://example.com/sso',
-                           SSO_SECRET='b54cc7b3e42b215d1792c300487f1cb1',
-                           SSO_CLIENT_BASE_URL='https://example.org'):
-            response = self.middleware.__call__(request)
-            func(request, response)
+        self.call_middleware(qs, {}, asserts)
