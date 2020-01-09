@@ -8,13 +8,13 @@ import urllib.parse
 from django.conf import settings
 from django.contrib import auth
 from django.contrib.auth.models import User
-from django.http import HttpResponseBadRequest, HttpResponseRedirect
+from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseRedirect
 from allauth.account.models import EmailAddress
 from django_mailman3.models import Profile
 from discoursessoclient.models import SsoRecord
 
 class DiscourseSsoClientMiddleware:
-    class EmailCollision(Exception):
+    class BadRequest(Exception):
         pass
 
     def __init__(self, get_response):
@@ -26,6 +26,8 @@ class DiscourseSsoClientMiddleware:
             return self.sso_init(request)
         elif request.path == '/sso/login':
             return self.sso_login(request)
+        elif request.path == '/sso/update':
+            return self.sso_update(request)
         else:
             return self.get_response(request)
 
@@ -42,58 +44,75 @@ class DiscourseSsoClientMiddleware:
         return HttpResponseRedirect(to_url)
 
     def sso_login(self, request):
+        try:
+            params = self.decode_check_sig_and_get_params(request)
+            self.check_nonce(request, params)
+            self.check_email_id_presence(params)
+            user = self.get_and_update_user(params)
+            auth.login(request, user)
+            sso = SsoRecord.objects.get(user=user)
+            sso.sso_logged_in = True
+            sso.save()
+            # If next was passed, redirect there, else redirect to root.
+            if params.get('custom.next') is None:
+                return HttpResponseRedirect(settings.SSO_CLIENT_BASE_URL)
+            else:
+                return HttpResponseRedirect(params.get('custom.next')[0])
+        except DiscourseSsoClientMiddleware.BadRequest as e:
+            return HttpResponseBadRequest(str(e))
+
+    def sso_update(self, request):
+        try:
+            params = self.decode_check_sig_and_get_params(request)
+            self.check_email_id_presence(params)
+            self.get_and_update_user(params)
+            return HttpResponse(status=204)
+        except DiscourseSsoClientMiddleware.BadRequest as e:
+            return HttpResponseBadRequest(str(e))
+
+    def decode_check_sig_and_get_params(self, request):
         # Check signature
         payload = request.GET.get('sso')
         signature = request.GET.get('sig')
 
         if payload is None or signature is None:
-            return HttpResponseBadRequest('no_payload_or_sig')
+            raise DiscourseSsoClientMiddleware.BadRequest('no_payload_or_sig')
 
         payload = urllib.parse.unquote(payload)
         if len(payload) == 0:
-            return HttpResponseBadRequest('empty_payload')
+            raise DiscourseSsoClientMiddleware.BadRequest('empty_payload')
 
-        if 'sso_nonce' not in request.session:
-            return HttpResponseBadRequest('no_nonce_in_session')
-
-        nonce = request.session['sso_nonce']
         try:
             qstring = base64.decodestring(payload.encode(encoding='utf-8')) \
                             .decode(encoding='utf-8')
         except ValueError:
-            return HttpResponseBadRequest('bad_payload_encoding')
+            raise DiscourseSsoClientMiddleware.BadRequest('bad_payload_encoding')
 
         if not hmac.compare_digest(self.sign_payload(payload), signature):
-            return HttpResponseBadRequest('invalid_signature')
+            raise DiscourseSsoClientMiddleware.BadRequest('invalid_signature')
 
-        if nonce not in qstring:
-            return HttpResponseBadRequest('wrong_nonce_in_payload')
+        return urllib.parse.parse_qs(qstring, strict_parsing=True)
+
+    def check_nonce(self, request, params):
+        if 'sso_nonce' not in request.session:
+            raise DiscourseSsoClientMiddleware.BadRequest('no_nonce_in_session')
+
+        nonce = request.session['sso_nonce']
+        if 'sso_nonce' not in params or params['sso_nonce'][0] != nonce:
+            raise DiscourseSsoClientMiddleware.BadRequest('wrong_nonce_in_payload')
 
         if time.time() > request.session['sso_expiry']:
-            return HttpResponseBadRequest('expired_nonce')
+            raise DiscourseSsoClientMiddleware.BadRequest('expired_nonce')
 
         # At this point we've validated the nonce so we can remove it.
         del request.session['sso_nonce']
         del request.session['sso_expiry']
 
-        params = urllib.parse.parse_qs(qstring, strict_parsing=True)
+    def check_email_id_presence(self, params):
         if 'external_id' not in params:
-            return HttpResponseBadRequest('missing_external_id')
+            raise DiscourseSsoClientMiddleware.BadRequest('missing_external_id')
         if 'email' not in params:
-            return HttpResponseBadRequest('missing_email')
-
-        try:
-            user = self.get_and_update_user(params)
-            request.user = user
-            auth.login(request, user)
-        except DiscourseSsoClientMiddleware.EmailCollision:
-            return HttpResponseBadRequest(f"email_collision_detected (ID: {params['external_id'][0]})")
-
-        # If next was passed, redirect there, else redirect to root.
-        if params.get('custom.next') is None:
-            return HttpResponseRedirect(settings.SSO_CLIENT_BASE_URL)
-        else:
-            return HttpResponseRedirect(params.get('custom.next')[0])
+            raise DiscourseSsoClientMiddleware.BadRequest('missing_email')
 
     # Generates signature for string or bytes payload.
     def sign_payload(self, payload):
@@ -119,7 +138,7 @@ class DiscourseSsoClientMiddleware:
             # If a user with the given email exists and is not associated with this ID,
             # that's an error and should never happen so we fail loudly.
             if sso.user != user:
-                raise DiscourseSsoClientMiddleware.EmailCollision
+                raise DiscourseSsoClientMiddleware.BadRequest(f"email_collision_detected (ID: {params['external_id'][0]})")
         except SsoRecord.DoesNotExist:
             if user is None:
                 user = User.objects.create(email=email)
@@ -127,12 +146,10 @@ class DiscourseSsoClientMiddleware:
                 # If a user with the given email exists and is associated with a different ID,
                 # that's an error and should never happen so we fail loudly.
                 if SsoRecord.objects.filter(user=user).exists():
-                    raise DiscourseSsoClientMiddleware.EmailCollision
+                    raise DiscourseSsoClientMiddleware.BadRequest(f"email_collision_detected (ID: {params['external_id'][0]})")
 
             sso = SsoRecord.objects.create(user=user, external_id=ext_id)
 
-        sso.sso_logged_in = True
-        sso.save()
         self.update_user_from_params(user, params)
         return user
 

@@ -42,6 +42,7 @@ class SsoLoginTestCase(TestCase):
 
     def test_with_no_payload(self):
         def asserts(request, response):
+            self.assertEqual(response.status_code, 400)
             self.assertEqual(response.content, b'no_payload_or_sig')
 
         self.call_middleware({}, {}, asserts)
@@ -51,12 +52,6 @@ class SsoLoginTestCase(TestCase):
             self.assertEqual(response.content, b'empty_payload')
 
         self.call_middleware({'sso': '', 'sig': ''}, {}, asserts)
-
-    def test_with_no_nonce_in_session(self):
-        def asserts(request, response):
-            self.assertEqual(response.content, b'no_nonce_in_session')
-
-        self.call_middleware({'sso': 'x', 'sig': ''}, {}, asserts)
 
     def test_with_bad_payload(self):
         def asserts(request, response):
@@ -73,6 +68,15 @@ class SsoLoginTestCase(TestCase):
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': 'xxx'}
         self.call_middleware(qs, self.session(), asserts)
+
+    def test_with_no_nonce_in_session(self):
+        def asserts(request, response):
+            self.assertEqual(response.content, b'no_nonce_in_session')
+
+        payload = 'sso_nonce=31ab53'
+        payload = self.encode(payload)
+        qs = {'sso': payload, 'sig': self.sign(payload)}
+        self.call_middleware(qs,{}, asserts)
 
     def test_with_wrong_nonce(self):
         def asserts(request, response):
@@ -250,6 +254,64 @@ class SsoLoginTestCase(TestCase):
         request = Mock(path="/sso/login",
                        session=session,
                        GET=get)
+        with self.settings(SSO_PROVIDER_URL='https://example.com/sso',
+                           SSO_SECRET='b54cc7b3e42b215d1792c300487f1cb1',
+                           SSO_CLIENT_BASE_URL='https://example.org'):
+            response = self.middleware.__call__(request)
+            func(request, response)
+
+class SsoUpdateTestCase(TestCase):
+
+    def setUp(self):
+        self.middleware = DiscourseSsoClientMiddleware(lambda x: x)
+
+    def test_with_bad_signature(self):
+        def asserts(request, response):
+            self.assertEqual(response.status_code, 400)
+            self.assertEqual(response.content, b'invalid_signature')
+
+        payload = 'stuff=things'
+        payload = self.encode(payload)
+        qs = {'sso': payload, 'sig': 'xxx'}
+        self.call_middleware(qs, asserts)
+
+    @patch.object(auth, 'login')
+    def test_with_matching_external_id_and_email(self, mock):
+        def asserts(request, response):
+            self.assertEqual(response.status_code, 204)
+            self.assertEqual(response.content, b'')
+
+            # User should not get logged in as a result of this update. It's just a metadata update.
+            self.assertFalse(SsoRecord.objects.get(external_id=123).sso_logged_in)
+
+            # Update should still happen otherwise.
+            user.refresh_from_db()
+            self.assertEqual(user.email, 'a@c.com')
+            self.assertEqual(user.first_name, 'M')
+            self.assertEqual(user.last_name, 'B')
+            self.assertEqual(user.username, 'z')
+            self.assertEqual(Profile.objects.get(user=user).timezone, 'America/St_Vincent')
+            self.assertTrue(EmailAddress.objects.get(user_id=user.id).verified)
+
+        user = User.objects.create_user(username='x', email='a@c.com')
+        EmailAddress.objects.create(user=user, email=user.email, verified=False)
+        SsoRecord.objects.create(user=user, external_id='123', sso_logged_in=False)
+        payload = 'username=z&external_id=123&email=a@c.com&custom.first_name=M&custom.last_name=B&custom.timezone=America/St_Vincent'
+        payload = self.encode(payload)
+        qs = {'sso': payload, 'sig': self.sign(payload)}
+        self.call_middleware(qs, asserts)
+
+    def encode(self, payload):
+        return base64.b64encode(payload.encode(encoding='utf-8')).decode(encoding='utf-8')
+
+    def sign(self, payload):
+        return hmac.new(b'b54cc7b3e42b215d1792c300487f1cb1',
+                        payload.encode(encoding='utf-8'),
+                        digestmod=hashlib.sha256).hexdigest()
+
+    def call_middleware(self, qs, func):
+        get = Mock(get=lambda x: qs[x] if x in qs else None)
+        request = Mock(path="/sso/update", GET=get)
         with self.settings(SSO_PROVIDER_URL='https://example.com/sso',
                            SSO_SECRET='b54cc7b3e42b215d1792c300487f1cb1',
                            SSO_CLIENT_BASE_URL='https://example.org'):
