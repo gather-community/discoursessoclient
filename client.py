@@ -14,6 +14,9 @@ from django_mailman3.models import Profile
 from discoursessoclient.models import SsoRecord
 
 class DiscourseSsoClientMiddleware:
+    class EmailCollision(Exception):
+        pass
+
     def __init__(self, get_response):
         self.get_response = get_response
         # One-time configuration and initialization.
@@ -79,9 +82,12 @@ class DiscourseSsoClientMiddleware:
         if 'email' not in params:
             return HttpResponseBadRequest('missing_email')
 
-        user = self.get_and_update_user(params)
-        request.user = user
-        auth.login(request, user)
+        try:
+            user = self.get_and_update_user(params)
+            request.user = user
+            auth.login(request, user)
+        except DiscourseSsoClientMiddleware.EmailCollision:
+            return HttpResponseBadRequest(f"email_collision_detected (ID: {params['external_id'][0]})")
 
         # If next was passed, redirect there, else redirect to root.
         if params.get('custom.next') is None:
@@ -104,24 +110,31 @@ class DiscourseSsoClientMiddleware:
         email = params['email'][0]
 
         try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            user = None
+
+        try:
             sso = SsoRecord.objects.get(external_id=ext_id)
+            # If a user with the given email exists and is not associated with this ID,
+            # that's an error and should never happen so we fail loudly.
+            if sso.user != user:
+                raise DiscourseSsoClientMiddleware.EmailCollision
         except SsoRecord.DoesNotExist:
-            try:
-                # Else, look for user with matching email.
-                sso = SsoRecord.objects.create(
-                    user=User.objects.get(email=email),
-                    external_id=ext_id)
-            except User.DoesNotExist:
-                # Else create user and sso record.
+            if user is None:
                 user = User.objects.create(email=email)
-                sso = SsoRecord.objects.create(
-                    user=user,
-                    external_id=ext_id)
+            else:
+                # If a user with the given email exists and is associated with a different ID,
+                # that's an error and should never happen so we fail loudly.
+                if SsoRecord.objects.filter(user=user).exists():
+                    raise DiscourseSsoClientMiddleware.EmailCollision
+
+            sso = SsoRecord.objects.create(user=user, external_id=ext_id)
 
         sso.sso_logged_in = True
         sso.save()
-        self.update_user_from_params(sso.user, params)
-        return sso.user
+        self.update_user_from_params(user, params)
+        return user
 
     def update_user_from_params(self, user, params):
         user.username = params.get('username', [None])[0]

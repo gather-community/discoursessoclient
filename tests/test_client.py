@@ -135,7 +135,7 @@ class SsoLoginTestCase(TestCase):
             self.assertEqual(Profile.objects.get(user=user).timezone, 'America/St_Vincent')
             self.assertTrue(EmailAddress.objects.get(user_id=user.id).verified)
 
-        user = User.objects.create_user(username='x', email='a@b.com')
+        user = User.objects.create_user(username='x', email='a@c.com')
         EmailAddress.objects.create(user=user, email=user.email, verified=False)
         SsoRecord.objects.create(user=user, external_id='123', sso_logged_in=False)
         payload = 'sso_nonce=31ab53&username=z&external_id=123&email=a@c.com&custom.first_name=M&custom.last_name=B&custom.timezone=America/St_Vincent&custom.next=/foo'
@@ -144,22 +144,69 @@ class SsoLoginTestCase(TestCase):
         self.call_middleware(qs, self.session(), asserts)
 
     @patch.object(auth, 'login')
-    def test_with_matching_email_but_not_external_id(self, mock):
+    def test_with_matching_sso_record_but_another_sso_account_has_our_email(self, mock):
         def asserts(request, response):
+            # This should be unlikely since we should be pushing an update when users change email addresses.
+            # For this to happen, something like this would have to have happened:
+            # - Person A changes from x@example.com => y@example.com,
+            #   AND this change is not sync'd for some reason
+            # - Person B changes from z@example.com => x@example.com and then sso's in. The system sees
+            #   that x@example.com is associated with Person A's account.
+            # In this case, we can't change Person A's email b/c we don't know what to change it to,
+            # and email is a required field. The safest thing to do is throw a descriptive error
+            # and let admins investigate.
+            self.assertEqual(response.status_code, 400)
+            self.assertEqual(response.content, b'email_collision_detected (ID: 124)')
+            self.assertFalse(SsoRecord.objects.get(external_id=124).sso_logged_in)
+            userA.refresh_from_db()
+            self.assertEqual(userA.username, 'PersonA')
+
+        userA = User.objects.create_user(username='PersonA', email='x@example.com')
+        SsoRecord.objects.create(user=userA, external_id='123', sso_logged_in=False)
+        userB = User.objects.create_user(username='PersonB', email='z@example.com')
+        SsoRecord.objects.create(user=userB, external_id='124', sso_logged_in=False)
+        payload = 'sso_nonce=31ab53&username=PersonB&external_id=124&email=x@example.com&custom.first_name=Person&custom.last_name=B'
+        payload = self.encode(payload)
+        qs = {'sso': payload, 'sig': self.sign(payload)}
+        self.call_middleware(qs, self.session(), asserts)
+
+    @patch.object(auth, 'login')
+    def test_with_no_matching_sso_record_and_another_sso_account_has_our_email(self, mock):
+        def asserts(request, response):
+            # This is similar to the previous example.
+            self.assertEqual(response.status_code, 400)
+            self.assertEqual(response.content, b'email_collision_detected (ID: 124)')
+            self.assertFalse(SsoRecord.objects.filter(external_id=124).exists())
+            userA.refresh_from_db()
+            self.assertEqual(userA.username, 'PersonA')
+
+        userA = User.objects.create_user(username='PersonA', email='x@example.com')
+        SsoRecord.objects.create(user=userA, external_id='123', sso_logged_in=False)
+        payload = 'sso_nonce=31ab53&username=PersonB&external_id=124&email=x@example.com&custom.first_name=Person&custom.last_name=B'
+        payload = self.encode(payload)
+        qs = {'sso': payload, 'sig': self.sign(payload)}
+        self.call_middleware(qs, self.session(), asserts)
+
+    @patch.object(auth, 'login')
+    def test_with_no_matching_sso_record_and_a_non_sso_account_has_our_email(self, mock):
+        def asserts(request, response):
+            # This could happen if an account got created in some other manner but hasn't been linked
+            # with SSO. In this case we should just link the two accounts via the SSO record.
             self.assertEqual(response.status_code, 302)
             self.assertEqual(response.url, 'https://example.org')
             mock.assert_called_with(request, user)
-            self.assertTrue(SsoRecord.objects.get(external_id=124).sso_logged_in)
+            self.assertTrue(SsoRecord.objects.get(external_id=123).sso_logged_in)
+            self.assertEqual(SsoRecord.objects.get(external_id=123).user, user)
             user.refresh_from_db()
-            self.assertEqual(user.first_name, 'M')
-            self.assertEqual(user.last_name, 'B')
-            self.assertEqual(user.username, 'z')
+            self.assertEqual(user.email, 'x@example.com')
+            self.assertEqual(user.first_name, 'Person')
+            self.assertEqual(user.last_name, 'A')
+            self.assertEqual(user.username, 'PersonA')
             self.assertTrue(EmailAddress.objects.get(user_id=user.id).verified)
 
-        user = User.objects.create_user(username='x', email='a@b.com')
+        user = User.objects.create_user(username='PersonA', email='x@example.com')
         EmailAddress.objects.create(user=user, email=user.email, verified=False)
-        SsoRecord.objects.create(user=user, external_id='123', sso_logged_in=False)
-        payload = 'sso_nonce=31ab53&username=z&external_id=124&email=a@b.com&custom.first_name=M&custom.last_name=B'
+        payload = 'sso_nonce=31ab53&username=PersonA&external_id=123&email=x@example.com&custom.first_name=Person&custom.last_name=A'
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': self.sign(payload)}
         self.call_middleware(qs, self.session(), asserts)
