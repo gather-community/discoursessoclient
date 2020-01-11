@@ -124,7 +124,7 @@ class DiscourseSsoClientMiddleware:
             raise DiscourseSsoClientMiddleware.BadRequest('no_nonce_in_session')
 
         nonce = request.session['sso_nonce']
-        if 'sso_nonce' not in params or params['sso_nonce'][0] != nonce:
+        if 'nonce' not in params or params['nonce'][0] != nonce:
             raise DiscourseSsoClientMiddleware.BadRequest('wrong_nonce_in_payload')
 
         if time.time() > request.session['sso_expiry']:

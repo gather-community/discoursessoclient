@@ -61,7 +61,7 @@ class SsoWithPayloadTestMixin(SsoTestMixin):
         def asserts(request, response):
             self.assertEqual(response.content, b'invalid_signature')
 
-        payload = 'sso_nonce=31ab53'
+        payload = 'nonce=31ab53'
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': 'xxx'}
         self.call_middleware(asserts, qs=qs)
@@ -90,7 +90,7 @@ class SsoLoginTestCase(SsoWithPayloadTestMixin, TestCase):
         def asserts(request, response):
             self.assertEqual(response.content, b'no_nonce_in_session')
 
-        payload = 'sso_nonce=31ab53'
+        payload = 'nonce=31ab53'
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': self.sign(payload)}
         self.call_middleware(asserts, qs=qs)
@@ -99,7 +99,7 @@ class SsoLoginTestCase(SsoWithPayloadTestMixin, TestCase):
         def asserts(request, response):
             self.assertEqual(response.content, b'wrong_nonce_in_payload')
 
-        payload = 'sso_nonce=31ab54'
+        payload = 'nonce=31ab54'
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': self.sign(payload)}
         self.call_middleware(asserts, qs=qs, session=self.session())
@@ -108,7 +108,7 @@ class SsoLoginTestCase(SsoWithPayloadTestMixin, TestCase):
         def asserts(request, response):
             self.assertEqual(response.content, b'expired_nonce')
 
-        payload = 'sso_nonce=31ab53'
+        payload = 'nonce=31ab53'
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': self.sign(payload)}
         self.call_middleware(asserts, qs=qs, session=self.session(expiry=time.time() - 10))
@@ -118,7 +118,7 @@ class SsoLoginTestCase(SsoWithPayloadTestMixin, TestCase):
             self.assertIsNone(request.session.get('sso_nonce'))
             self.assertIsNone(request.session.get('sso_expiry'))
 
-        payload = 'sso_nonce=31ab53'
+        payload = 'nonce=31ab53'
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': self.sign(payload)}
         self.call_middleware(asserts, qs=qs, session=self.session())
@@ -127,7 +127,7 @@ class SsoLoginTestCase(SsoWithPayloadTestMixin, TestCase):
         def asserts(request, response):
             self.assertEqual(response.content, b'missing_external_id')
 
-        payload = 'sso_nonce=31ab53'
+        payload = 'nonce=31ab53'
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': self.sign(payload)}
         self.call_middleware(asserts, qs=qs, session=self.session())
@@ -137,7 +137,7 @@ class SsoLoginTestCase(SsoWithPayloadTestMixin, TestCase):
             self.assertEqual(response.content, b'missing_email')
             self.assertFalse(SsoRecord.objects.filter(external_id=123).exists())
 
-        payload = 'sso_nonce=31ab53&external_id=123'
+        payload = 'nonce=31ab53&external_id=123'
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': self.sign(payload)}
         self.call_middleware(asserts, qs=qs, session=self.session())
@@ -160,7 +160,7 @@ class SsoLoginTestCase(SsoWithPayloadTestMixin, TestCase):
         user = User.objects.create_user(username='x', email='a@c.com')
         EmailAddress.objects.create(user=user, email=user.email, verified=False)
         SsoRecord.objects.create(user=user, external_id='123', sso_logged_in=False)
-        payload = 'sso_nonce=31ab53&username=z&external_id=123&email=a@c.com&custom.first_name=M&custom.last_name=B&custom.timezone=America/St_Vincent&custom.next=/foo'
+        payload = 'nonce=31ab53&username=z&external_id=123&email=a@c.com&custom.first_name=M&custom.last_name=B&custom.timezone=America/St_Vincent&custom.next=/foo'
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': self.sign(payload)}
         self.call_middleware(asserts, qs=qs, session=self.session())
@@ -187,7 +187,7 @@ class SsoLoginTestCase(SsoWithPayloadTestMixin, TestCase):
         SsoRecord.objects.create(user=userA, external_id='123', sso_logged_in=False)
         userB = User.objects.create_user(username='PersonB', email='z@example.com')
         SsoRecord.objects.create(user=userB, external_id='124', sso_logged_in=False)
-        payload = 'sso_nonce=31ab53&username=PersonB&external_id=124&email=x@example.com&custom.first_name=Person&custom.last_name=B'
+        payload = 'nonce=31ab53&username=PersonB&external_id=124&email=x@example.com&custom.first_name=Person&custom.last_name=B'
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': self.sign(payload)}
         self.call_middleware(asserts, qs=qs, session=self.session())
@@ -204,7 +204,7 @@ class SsoLoginTestCase(SsoWithPayloadTestMixin, TestCase):
 
         userA = User.objects.create_user(username='PersonA', email='x@example.com')
         SsoRecord.objects.create(user=userA, external_id='123', sso_logged_in=False)
-        payload = 'sso_nonce=31ab53&username=PersonB&external_id=124&email=x@example.com&custom.first_name=Person&custom.last_name=B'
+        payload = 'nonce=31ab53&username=PersonB&external_id=124&email=x@example.com&custom.first_name=Person&custom.last_name=B'
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': self.sign(payload)}
         self.call_middleware(asserts, qs=qs, session=self.session())
@@ -228,7 +228,7 @@ class SsoLoginTestCase(SsoWithPayloadTestMixin, TestCase):
 
         user = User.objects.create_user(username='PersonA', email='x@example.com')
         EmailAddress.objects.create(user=user, email=user.email, verified=False)
-        payload = 'sso_nonce=31ab53&username=PersonA&external_id=123&email=x@example.com&custom.first_name=Person&custom.last_name=A'
+        payload = 'nonce=31ab53&username=PersonA&external_id=123&email=x@example.com&custom.first_name=Person&custom.last_name=A'
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': self.sign(payload)}
         self.call_middleware(asserts, qs=qs, session=self.session())
@@ -251,7 +251,7 @@ class SsoLoginTestCase(SsoWithPayloadTestMixin, TestCase):
 
         decoy_user = User.objects.create_user(username='x', email='a@b.com')
         SsoRecord.objects.create(user=decoy_user, external_id='123', sso_logged_in=False)
-        payload = 'sso_nonce=31ab53&username=z&external_id=124&email=a@c.com&custom.first_name=M&custom.last_name=B'
+        payload = 'nonce=31ab53&username=z&external_id=124&email=a@c.com&custom.first_name=M&custom.last_name=B'
         payload = self.encode(payload)
         qs = {'sso': payload, 'sig': self.sign(payload)}
         self.call_middleware(asserts, qs=qs, session=self.session())
