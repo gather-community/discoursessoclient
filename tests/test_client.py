@@ -289,6 +289,33 @@ class SsoUpdateTestCase(SsoWithPayloadTestMixin, TestCase):
         qs = {'sso': payload, 'sig': self.sign(payload)}
         self.call_middleware(asserts, qs=qs)
 
+    @patch.object(auth, 'login')
+    def test_with_matching_external_id_but_email_has_changed(self, mock):
+        def asserts(request, response):
+            self.assertEqual(response.status_code, 204)
+            self.assertEqual(response.content, b'')
+
+            # User should not get logged in as a result of this update. It's just a metadata update.
+            self.assertFalse(SsoRecord.objects.get(external_id=123).sso_logged_in)
+            mock.assert_not_called()
+
+            # Update should still happen otherwise.
+            user.refresh_from_db()
+            self.assertEqual(user.email, 'b@c.com')
+            self.assertEqual(user.first_name, 'M')
+            self.assertEqual(user.last_name, 'B')
+            self.assertEqual(user.username, 'z')
+            self.assertEqual(Profile.objects.get(user=user).timezone, 'America/St_Vincent')
+            self.assertTrue(EmailAddress.objects.get(user_id=user.id).verified)
+
+        user = User.objects.create_user(username='x', email='a@c.com')
+        EmailAddress.objects.create(user=user, email=user.email, verified=False)
+        SsoRecord.objects.create(user=user, external_id='123', sso_logged_in=False)
+        payload = 'username=z&external_id=123&email=b@c.com&custom.first_name=M&custom.last_name=B&custom.timezone=America/St_Vincent'
+        payload = self.encode(payload)
+        qs = {'sso': payload, 'sig': self.sign(payload)}
+        self.call_middleware(asserts, qs=qs)
+
 class SsoLogoutTestCase(SsoWithPayloadTestMixin, TestCase):
     url = '/sso/logout'
 

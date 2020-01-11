@@ -165,7 +165,7 @@ class DiscourseSsoClientMiddleware:
             sso = SsoRecord.objects.get(external_id=ext_id)
             # If a user with the given email exists and is not associated with this ID,
             # that's an error and should never happen so we fail loudly.
-            if sso.user != user:
+            if user is not None and sso.user != user:
                 raise DiscourseSsoClientMiddleware.BadRequest(f"email_collision_detected (ID: {params['external_id'][0]})")
         except SsoRecord.DoesNotExist:
             if user is None:
@@ -178,8 +178,8 @@ class DiscourseSsoClientMiddleware:
 
             sso = SsoRecord.objects.create(user=user, external_id=ext_id)
 
-        self.update_user_from_params(user, params)
-        return user
+        self.update_user_from_params(sso.user, params)
+        return sso.user
 
     def update_user_from_params(self, user, params):
         user.username = params.get('username', [None])[0]
