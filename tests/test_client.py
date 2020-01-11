@@ -6,7 +6,7 @@ from django.test import TestCase
 from unittest.mock import Mock, patch
 
 from django.contrib import auth
-from django.contrib.auth.models import User
+from django.contrib.auth.models import User, AnonymousUser
 from django_mailman3.models import Profile
 from allauth.account.models import EmailAddress
 from discoursessoclient.client import DiscourseSsoClientMiddleware
@@ -28,7 +28,8 @@ class SsoTestMixin:
         return Mock(get=lambda x: qs[x] if x in qs else None)
 
     def call_middleware(self, callback, qs=None, session=None, user=None):
-        request = Mock(user=user, path=self.url, session=session or {}, GET=self.mock_qs(qs or {}))
+        request = Mock(user=user or AnonymousUser(), path=self.url,
+            session=session or {}, GET=self.mock_qs(qs or {}))
         with self.settings(SSO_PROVIDER_URL='https://example.com/sso',
                            SSO_SECRET='b54cc7b3e42b215d1792c300487f1cb1',
                            SSO_CLIENT_BASE_URL='https://example.org'):

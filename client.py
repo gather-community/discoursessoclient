@@ -89,7 +89,7 @@ class DiscourseSsoClientMiddleware:
 
     # Lets the request proceed, but logs out the logged in user if they don't have a valid SsoRecord
     def sso_passthru(self, request):
-        if request.user is not None:
+        if request.user.is_authenticated:
             try:
                 SsoRecord.objects.get(user=request.user, sso_logged_in=True)
             except SsoRecord.DoesNotExist:
