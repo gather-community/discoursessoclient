@@ -28,8 +28,10 @@ class DiscourseSsoClientMiddleware:
             return self.sso_login(request)
         elif request.path == '/sso/update':
             return self.sso_update(request)
+        elif request.path == '/sso/logout':
+            return self.sso_logout(request)
         else:
-            return self.get_response(request)
+            return self.sso_passthru(request)
 
     def sso_init(self, request):
         nonce = request.session['sso_nonce'] = secrets.token_hex(16)
@@ -47,8 +49,9 @@ class DiscourseSsoClientMiddleware:
         try:
             params = self.decode_check_sig_and_get_params(request)
             self.check_nonce(request, params)
-            self.check_email_id_presence(params)
-            user = self.get_and_update_user(params)
+            self.check_id_presence(params)
+            self.check_email_presence(params)
+            user = self.get_and_update_user_via_id_and_email(params)
             auth.login(request, user)
             sso = SsoRecord.objects.get(user=user)
             sso.sso_logged_in = True
@@ -64,11 +67,34 @@ class DiscourseSsoClientMiddleware:
     def sso_update(self, request):
         try:
             params = self.decode_check_sig_and_get_params(request)
-            self.check_email_id_presence(params)
-            self.get_and_update_user(params)
+            self.check_id_presence(params)
+            self.check_email_presence(params)
+            self.get_and_update_user_via_id_and_email(params)
             return HttpResponse(status=204)
         except DiscourseSsoClientMiddleware.BadRequest as e:
             return HttpResponseBadRequest(str(e))
+
+    def sso_logout(self, request):
+        try:
+            params = self.decode_check_sig_and_get_params(request)
+            self.check_id_presence(params)
+            sso = SsoRecord.objects.get(external_id=params['external_id'][0])
+            sso.sso_logged_in = False
+            sso.save()
+            return HttpResponse(status=204)
+        except SsoRecord.DoesNotExist:
+            return HttpResponseBadRequest('user_not_found')
+        except DiscourseSsoClientMiddleware.BadRequest as e:
+            return HttpResponseBadRequest(str(e))
+
+    # Lets the request proceed, but logs out the logged in user if they don't have a valid SsoRecord
+    def sso_passthru(self, request):
+        if request.user is not None:
+            try:
+                SsoRecord.objects.get(user=request.user, sso_logged_in=True)
+            except SsoRecord.DoesNotExist:
+                auth.logout(request)
+        return self.get_response(request)
 
     def decode_check_sig_and_get_params(self, request):
         # Check signature
@@ -108,9 +134,11 @@ class DiscourseSsoClientMiddleware:
         del request.session['sso_nonce']
         del request.session['sso_expiry']
 
-    def check_email_id_presence(self, params):
+    def check_id_presence(self, params):
         if 'external_id' not in params:
             raise DiscourseSsoClientMiddleware.BadRequest('missing_external_id')
+
+    def check_email_presence(self, params):
         if 'email' not in params:
             raise DiscourseSsoClientMiddleware.BadRequest('missing_email')
 
@@ -124,7 +152,7 @@ class DiscourseSsoClientMiddleware:
                         payload,
                         digestmod=hashlib.sha256).hexdigest()
 
-    def get_and_update_user(self, params):
+    def get_and_update_user_via_id_and_email(self, params):
         ext_id = params['external_id'][0]
         email = params['email'][0]
 
