@@ -190,6 +190,7 @@ class DiscourseSsoClientMiddleware:
 
         try:
             address = EmailAddress.objects.get(user_id=user.id)
+            address.email = user.email
             address.verified = True
             address.save()
         except EmailAddress.DoesNotExist:

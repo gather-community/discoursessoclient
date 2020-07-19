@@ -306,10 +306,18 @@ class SsoUpdateTestCase(SsoWithPayloadTestMixin, TestCase):
             self.assertEqual(user.last_name, 'B')
             self.assertEqual(user.username, 'z')
             self.assertEqual(Profile.objects.get(user=user).timezone, 'America/St_Vincent')
-            self.assertTrue(EmailAddress.objects.get(user_id=user.id).verified)
+
+            # Associated email address record should get updated and set to verified.
+            address = EmailAddress.objects.get(user_id=user.id)
+            self.assertEqual(address.email, 'b@c.com')
+            self.assertTrue(address.verified)
 
         user = User.objects.create_user(username='x', email='a@c.com')
+
+        # Usually the existing EmailAddress record would be verified but we set to not verified
+        # just to ensure the flag gets set.
         EmailAddress.objects.create(user=user, email=user.email, verified=False)
+
         SsoRecord.objects.create(user=user, external_id='123', sso_logged_in=False)
         payload = 'username=z&external_id=123&email=b@c.com&custom.first_name=M&custom.last_name=B&custom.timezone=America/St_Vincent'
         payload = self.encode(payload)
