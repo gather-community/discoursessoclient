@@ -40,9 +40,14 @@ if your app is expecting a named URL pattern in that setting, by creating a name
 
 To work on this app in development:
 
-1. Create a sample Django project.
+1. Create a sample Django project and cd into it.
+1. Set up a virtualenv and packages:
+
+        virtualenv .
+        source bin/activate
+        pip install django-allauth
+
 1. Add a view protected with `@login_required` and map it to a URL. Confirm that you see the login page when attempting to view it.
-1. `pip install django-allauth`
 1. Check out the django_mailman3 and mailmanclient repos in separate directories and create symlinks into their inner module dirs in your sample project.
 1. Add `django_mailman3`, `mailmanclient`, `allauth`, `allauth.account`, and `django.contrib.sites` to your `INSTALLED_APPS`, and set `SITE_ID = 1` in your settings.py.
 1. Add the discoursessoclient app as described above.
