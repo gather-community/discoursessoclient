@@ -193,6 +193,8 @@ class DiscourseSsoClientMiddleware:
             address.email = user.email
             address.verified = True
             address.save()
+        except EmailAddress.MultipleObjectsReturned:
+            raise DiscourseSsoClientMiddleware.BadRequest(f"Multiple addresses returned for user {user.username} (ID: {params['external_id'][0]})") from None
         except EmailAddress.DoesNotExist:
             EmailAddress.objects.create(user=user, email=user.email, verified=True)
 

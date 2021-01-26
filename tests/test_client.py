@@ -193,6 +193,22 @@ class SsoLoginTestCase(SsoWithPayloadTestMixin, TestCase):
         self.call_middleware(asserts, qs=qs, session=self.session())
 
     @patch.object(auth, 'login')
+    def test_with_matching_sso_record_but_two_addresses_associated_with_user(self, mock):
+        def asserts(request, response):
+            self.assertEqual(response.status_code, 400)
+            self.assertEqual(response.content, b'Multiple addresses returned for user PersonB (ID: 123)')
+            self.assertFalse(SsoRecord.objects.get(external_id=123).sso_logged_in)
+
+        user = User.objects.create_user(username='PersonA', email='x@example.com')
+        EmailAddress.objects.create(user=user, email='x@example.com', verified=False)
+        EmailAddress.objects.create(user=user, email='y@example.com', verified=False)
+        SsoRecord.objects.create(user=user, external_id='123', sso_logged_in=False)
+        payload = 'nonce=31ab53&username=PersonB&external_id=123&email=x@example.com&custom.first_name=Person&custom.last_name=B'
+        payload = self.encode(payload)
+        qs = {'sso': payload, 'sig': self.sign(payload)}
+        self.call_middleware(asserts, qs=qs, session=self.session())
+
+    @patch.object(auth, 'login')
     def test_with_no_matching_sso_record_and_another_sso_account_has_our_email(self, mock):
         def asserts(request, response):
             # This is similar to the previous example.
