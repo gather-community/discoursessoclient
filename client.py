@@ -183,21 +183,45 @@ class DiscourseSsoClientMiddleware:
         return sso.user
 
     def update_user_from_params(self, user, params):
+        previous_main_email = user.email
+
         user.username = params.get('username', [None])[0]
         user.first_name = params.get('custom.first_name', [None])[0]
         user.last_name = params.get('custom.last_name', [None])[0]
         user.email = params['email'][0]  # Email is not optional
         user.save()
 
+        # It is not clear what the EmailAddress model is for, but we know that the email
+        # record in this model that matches the main user record email must be marked 'verified'
+        # for Mailman to work properly.
+        #
+        # Users can have multiple emails in this table.
+        #
+        # If there is already a match in the table for the user's current address,
+        # we just make sure it's verified and we're done.
+        #
+        # Otherwise, if the user's main email just changed and the old one has a match in
+        # the table, we update it AND mark it verified.
+        #
+        # Otherwise, we insert the current address as verified.
+        #
+        # The "primary" column does not seem important because many users don't have a
+        # "primary" email record at all.
         try:
-            address = EmailAddress.objects.get(user_id=user.id)
-            address.email = user.email
-            address.verified = True
-            address.save()
-        except EmailAddress.MultipleObjectsReturned:
-            raise DiscourseSsoClientMiddleware.BadRequest(f"Multiple addresses returned for user {user.username} (ID: {params['external_id'][0]})") from None
+            address_matching_current = EmailAddress.objects.get(user_id=user.id, email=user.email)
+            address_matching_current.verified = True
+            address_matching_current.save()
         except EmailAddress.DoesNotExist:
-            EmailAddress.objects.create(user=user, email=user.email, verified=True)
+            try:
+                if user.email != previous_main_email:
+                    address_matching_previous = EmailAddress.objects.get(user_id=user.id, email=previous_main_email)
+                    address_matching_previous.email = user.email
+                    address_matching_previous.verified = True
+                    address_matching_previous.save()
+                else:
+                    EmailAddress.objects.create(user=user, email=user.email, verified=True)
+            except EmailAddress.DoesNotExist:
+                EmailAddress.objects.create(user=user, email=user.email, verified=True)
 
         if params.get('custom.timezone') is not None:
             profile = Profile.objects.get(user=user)
